@@ -1,0 +1,105 @@
+\documentclass[a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{enumerate}
+\usepackage{algorithm}
+\title{Going to the Gym: Game-playing AI using RL-Q}
+\author{Morgan Lunn}
+\date{}
+
+\begin{document}
+	\maketitle
+
+	\section{Abstract}%
+	\label{sec:Abstract}
+	\section{Introduction}%
+	\label{sec:Introduction}
+Reinforcement learning has been successfully been applied to a wide variety of problems, ranging from robot control [Xie, Zhaoming, et al. "ALLSTEPS: Curriculum‐driven Learning of Stepping Stone Skills." Computer Graphics Forum. Vol. 39. No. 8. 2020.] to games such as checkers and Go [2016Natur.529..484S]. This method of machine learning is particularly effective in environments where no model of the environment is available, or if there is such a model, but no analytic solution is known.
+
+In this experiment we shall take a pair of games from the open resource `openAI Gym’ and investigate the question `how do reward functions affect an agent’s ability to learn?’.
+
+In the background, we will discuss the theoretical underpinnings of the model. In the Methods section, we will explain how exactly we implemented those methods, in addition to describing the source of our games. In Results, we will first explain how the games worked, and then we will present the results obtained by our agent. Additionally, if we implemented solutions to problems we encountered, we will shortly discuss them here. The Discussion will contain a review of the results, a more elaborate discussion of the difficulties we encountered, and the possible solutions to them.
+Background
+In this experiment we used a model using reinforcement learning (RL) and Q-learning (QL) [Watkins, C.J.C.H. (1989). Learning from Delayed Rewards] to allow our agent to learn from feedback it receives from the environment in the form of ‘rewards’. In this case, the rewards are simply represented by numbers that are received by the agent. The core of this method is the Bellman equation, which describes how to update Q:
+
+The letter ‘Q’ here refers to the ‘quality’ of the actions taken [https://neuro.cs.ut.ee/demystifying-deep-reinforcement-learning/]. As can be seen, there are multiple hyperparameters which can be tweaked in order to influence the efficacy and speed of learning. Our choice of parameters is given in the following section.
+Methods
+We used a type of reinforcement learning algorithm with Q-learning. This type of learning is especially appropriate for game-playing AI, because it does not require a model of the environment (it is model-free), because it only relies on reward feedback for reinforcement. Here we used the epsilon-greedy method to trade off exploration versus exploitation. Although some methods can outperform epsilon-greedy [http://www.tokic.com/www/tokicm/publikationen/papers/KI2011.pdf], we chose the latter for its simplicity and transparency.
+
+Initially, we only used a very simple model, without experience replay. The pseudocode of this simple model is as follows:
+
+\begin{algorithm}
+If argument == ‘train’
+For run in RUNS
+		Init state, done, count
+	While not done
+			If random() > epsilon
+				Action = argmax qTable(state)
+		Else
+				Action = random(action_space)
+	New_state, reward, done = step(action)
+	max_futureQ = max(qTable(new_state)
+		currentQ = qTable(state)
+
+newQ = (1- learning_rate)*currentQ + learning_rate*(reward+discount*max_futureQ)
+qTable(state) + action = newQ
+State =new_state
+decay(epsilon)
+save(qTable)
+
+If argument == ‘play’
+load(qTable)
+For run in RUNS
+		Init state, done, count
+		While not done
+			If random() > epsilon
+				Action = argmax qTable(state)
+			Else
+			Action = random(action_space)
+		New_state, reward, done = step(action)
+\end{algorithm}
+
+The hyperparameters were as follows:
+
+LEARNING_RATE = 0.01
+DISCOUNT = 0.95
+RUNS = 3000
+TEST_RUNS = 100
+GAME_OVER_PENALTY = -400
+START_REWARD = 200
+
+The source for our games was the open resource `Gym’ by openAI [https://github.com/openai/gym]. In particular, we used games from the `Classic Control’ library, which contains exercises for agents learning about movement, such as robot arm movement. The two games we chose from this library were `CartPole’ and `MountainCar’.
+Results
+The results obtained by our agent were starkly different between games. One game, CartPole, was rather simply learned by the agent and yielded satisfying results. However, the other game we tried, MountainCar, did not enjoy the same treatment. We will summarise the working of the games, and then we will discuss the results.
+CartPole
+CartPole, henceforth CP, is a game wherein the agent must balance a pole upon a cart for as long as possible. It consists of two actions, namely left and right, and four state variables, namely cart velocity, position, pole angle and pole angular velocity. Additionally, it returns a variable `done’, which returns True when the game is over (and False otherwise). The failstate of this game is reached when either: the pole angle is greater than +-12 degrees; the cart position is greater than +-2.4, or the episode length is greater than 500.
+
+The simple model was able to achieve a maximum of 500 steps during training, which is the maximum, in around 1400 episodes. The playing agent is then able to use the qTable from training to achieve an average of 420 on a validation set of 100 extra episodes.
+
+This result was obtained after applying two simple changes to the reward structure of the game. Firstly, since `done’ returns True both when the game is successfully completed and when the agent has failed, we therefore define a counter variable to count the amount of episodes that have transpired. We then define a new failure state as `done’ being True, while the counter is also less than 500. If this is the case, we administer a large negative reward to the agent, so that it is strongly disincentivised from taking actions which lead to this outcome.
+
+
+In effect, this redefinition of the failure state reshapes our reward function. This is called `reward shaping’, and it can help our agent learn faster in certain situations [Theory and application of reward shaping in reinforcement learning], [Policy invariance under reward transformations], [Learning to Utilize Shaping Rewards: A New Approach of Reward Shaping].
+MountainCar
+However, for MC, the situation was rather different. The agent was unable to successfully finish the game. That is, it was not able to find a way to reach the flag in time during the 3000 runs we set as standard at the start of the experiment. When given the opportunity to play for 10,000 runs, it was still not able to find the right way to control the car so as to reach the goal. It is likely that the reason was the reward system, which is practically binary. This created a strong class imbalance, wherein there was no success state providing positive feedback which the agent could use to modulate its behaviour. Simply put, it was continually failing, but unsure how much, and therefore unsure how to change it and begin succeeding.
+
+Solving this would require a slightly more complicated modification to the reward system, and some deeper knowledge of the inner workings of the game. The documentation for the game [https://github.com/openai/gym/blob/master/gym/envs/classic_control/mountain_car.py] tells us that the success state is achieved when the position of the car equals or exceeds the value 0.5. Thus, we can simply say that the car receives precisely this value as reward. Because 0.5 is the highest value this variable can take on, maximising this value will also maximise success in the game.
+
+Indeed, this alteration proved fruitful. It is clear from the following graph that the agent is learning behaviour which increases its reward, and because we aligned the reward exactly with the success state, this corresponds to learning how to better play the game. Note that the numbers on the vertical axis do not necessarily represent anything in particular; we can just view it as the outcome of the reward function.
+
+Another possibility is to take the squared distance between the flag and the car, but we did not attempt this solution.
+It’s clear that there is something which causes the score to hit the ceiling around -72 (again, because the units are more or less arbitrary, this does not represent anything in particular). Checking the rendered environment, so we can see the agent play in real-time, reveals that the agent is trying not to move away from the flag. However, in order to win the game, the agent must use momentum in order to scale the mountain, which means it needs to accept some less optimal values in order to increase its eventual reward.
+
+A possible solution might be to let the reward be given by the closest the agent has come to the flag thus far, and to give it a high reward if it beats this score, while decaying the reward if it does not beat it.
+
+Unfortunately, even this is not sufficient to persuade the agent to perform better at the game: at around the 1500th run, when the randomness parameter becomes zero, the high score stops being improved upon, and the agent seems to get stuck.
+
+Another possibility, courtesy of [https://towardsdatascience.com/getting-started-with-reinforcement-learning-and-open-ai-gym-c289aca874f] is to shape the reward by providing the lowest reward in the situation where the car is in the middle of the valley, so that deviations either way will provide an improvement. Again, however, no solution is found by the agent. The aforementioned source also mentions the reason this is problematic: if no winning solution is ever found during play, the agent cannot properly learn to play the game.
+Discussion
+Rewards are extremely important in reinforcement learning. A large part of the difficulty of this experiment was the implementation of rewards, and in general, the implementation of failstates. The two games we chose to let our agent play, CartPole (CP) and MountainCar (MC), were chosen because they are polar opposites in a sense: CartPole’s goal is to stay upright for as long as possible; in MountainCar the aim is to reach the flag as quickly as possible. Since `running out the clock’ in CP is the success state, but this is the failure state in MC, the strategy needs to be very different. In addition, CP requires quick button-pressing, and MC requires the opposite: extended presses of the same button.
+
+For this reason, it was likely that the same reward function would not yield optimal results for both games, and this is indeed what we found.
+
+\end{document}
